@@ -1,0 +1,176 @@
+import "std/fs.zc"
+import "std/result.zc"
+import "std/vec.zc"
+
+fn cpp_format() -> string {
+	return ("""#include "%n.hpp"
+
+%n::%n() {{}}
+
+%n::%n(const %n& other) {{}}
+
+%n& %n::operator=(const %n& other) {{
+	if (this != &other) {{
+	}}
+
+	return (*this);
+}}
+
+%n::~%n() {{}}
+""");
+}
+
+fn hpp_format() -> string {
+	return ("""#ifndef %N
+# define %N
+
+class %n {{
+
+public:
+
+	%n();
+
+	%n(const %n& other);
+
+	%n& operator=(const %n& other);
+
+	~%n();
+
+}};
+
+#endif
+""");
+}
+
+enum FileType {
+	CPP,
+	HPP
+}
+
+fn check_ext(file_name: string) -> Result<FileType> {
+	let len = 0;
+	while file_name[len] {
+		len++;
+	}
+	if (len < 1) {
+		return Result<FileType>::Err("Empty file name");
+	}
+	if (len < 3) {
+		return Result<FileType>::Err("Wrong file extention");
+	}
+	if (file_name[len - 1] != 'p' || file_name[len - 2] != 'p' || file_name[len - 4] != '.') {
+		return Result<FileType>::Err("Wrong file extention");
+	}
+	if (file_name[len - 3] == 'c') {
+		return Result<FileType>::Ok(FileType::CPP());
+	}
+	if (file_name[len - 3] == 'h') {
+		return Result<FileType>::Ok(FileType::HPP());
+	}
+	return Result<FileType>::Err("Wrong file extention");
+}
+
+fn get_lower(file_name: string) -> Vec<char> {
+	let i = 0;
+	while (file_name[i]) {
+		i++;
+	}
+	i -= 4;
+	let ret = Vec<char>::with_capacity(i);
+	let j = 0;
+	while (j < i) {
+		ret.push(file_name[j]);
+		j++;
+	}
+	return (ret);
+}
+
+fn get_upper(file_name: string) -> Vec<char> {
+	let i = 0;
+	while (file_name[i]) {
+		i++;
+	}
+	let ret = Vec<char>::with_capacity(i);
+	i = 0;
+	while (file_name[i]) {
+		let c = file_name[i];
+		if (c >= 'a' && c <= 'z') {
+			ret.push(c - 32);
+		} else if (c == '.') {
+			ret.push('_');
+		} else {
+			ret.push(c);
+		}
+		i++;
+	}
+	return (ret);
+}
+
+fn gen_file(file_name: string, format: string) {
+	let res = File::open(file_name, "w");
+
+	if (res.is_err()) {
+		println "Cant open file";
+		return;
+	}
+	let file = res.unwrap();
+	
+	let lower = get_lower(file_name);
+	let upper = get_upper(file_name);
+	let out = Vec<char>::new();
+	let i = 0;
+	while (format[i]) {
+		if (format[i] == '%') {
+			if (format[i + 1] == 'n') {
+				out.append(lower.clone());
+				i++;
+			} else if (format[i + 1] == 'N') {
+				out.append(upper.clone());
+				i++;
+			} else {
+				out.push(format[i]);
+			}
+		} else {
+			out.push(format[i]);
+		}
+		i++;
+	}
+	out.push(0);
+	let write_res = file.write_string(out.data);
+	if (write_res.is_err()) {
+		println "Error writing to file: {write_res.err}";
+	} else {
+		println "Successfully created {file_name}";
+	}
+	file.close();
+}
+
+fn main(ac: int, av: string*) {
+	if (ac != 2) {
+		println "Usage: cppclass <FileName>[.cpp | .hpp]";
+		return 1;
+	}
+	for (let i = 0; av[1][i]; i++) {
+		let c: char = av[1][i];
+		if (c == '/') {
+			println "Subdir are not suported yet";
+			return 1;
+		}
+		if ((c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && c != '_' && c != '.' && (i != 1 || c < '0' || c > '9')) {
+			println "Invalid character in file name: '{c}'";
+			return 1;
+		}
+	}
+	if (File::exists(av[1])) {
+		println "{av[1]} alreeady exists";
+	}
+	let file_type = check_ext(av[1]);
+	if (!file_type.is_ok()) {
+		println "{file_type.err}";
+		return 1;
+	}
+	match (file_type.unwrap()) {
+		FileType::CPP => { gen_file(av[1], cpp_format()); },
+		FileType::HPP => { gen_file(av[1], hpp_format()); },
+	}
+}
